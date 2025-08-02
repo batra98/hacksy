@@ -19,6 +19,7 @@ import {
 import LoadingSpinner from '../components/LoadingSpinner';
 import FeatureCard from '../components/FeatureCard';
 import RecommendationDisplay from '../components/RecommendationDisplay';
+import ErrorDisplay from '../components/ErrorDisplay';
 
 export default function Home() {
   const [username, setUsername] = useState('');
@@ -177,17 +178,17 @@ export default function Home() {
 
       {/* Error Display */}
       {error && (
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 mb-8">
-          <div className="glass-card rounded-xl p-6 border-l-4 border-red-500 bg-red-50/50">
-            <div className="flex items-center">
-              <AlertCircle className="w-6 h-6 text-red-500 mr-3" />
-              <div>
-                <h3 className="text-lg font-semibold text-red-800">Analysis Failed</h3>
-                <p className="text-red-700 mt-1">{error}</p>
-              </div>
-            </div>
-          </div>
-        </div>
+        <ErrorDisplay
+          error={error}
+          username={username}
+          onRetry={() => handleSubmit({ preventDefault: () => {} })}
+          onClear={() => {
+            setError('');
+            setUsername('');
+            setResult('');
+            setProfileData(null);
+          }}
+        />
       )}
 
       {/* Results */}
