@@ -12,8 +12,8 @@ export async function POST(request) {
 
     console.log(`Analyzing GitHub user: ${username}`);
 
-    // Get the agents service URL from environment
-    const agentsUrl = process.env.AGENTS_URL || "http://agents:7777";
+    // Get the agents service URL from environment (supports Docker and production)
+    const agentsUrl = process.env.AGENTS_URL || "https://hacksy.onrender.com";
 
     // Call the agents service
     const response = await fetch(`${agentsUrl}/analyze`, {
