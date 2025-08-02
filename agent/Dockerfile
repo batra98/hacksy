@@ -22,6 +22,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Ensure agents.yaml is in the correct location
+COPY agents.yaml ./agents.yaml
+
 # Create non-root user
 RUN groupadd -r agents && useradd -r -g agents agents
 RUN chown -R agents:agents /app

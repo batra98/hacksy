@@ -43,7 +43,7 @@ class HealthResponse(BaseModel):
     version: str = "1.0.0"
 
 class AgentConfig:
-    def __init__(self, config_path: str = "/agents.yaml"):
+    def __init__(self, config_path: str = "agents.yaml"):
         self.config_path = config_path
         self.agents = {}
         self.config = {}
