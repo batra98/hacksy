@@ -35,37 +35,76 @@ export default function RecommendationDisplay({ recommendations, username, profi
     const projectsMatch = text.match(/🚀 \*\*Top \d+-?\d* Hackathon Project Recommendations\*\*(.*?)💡/s)
     const projectsText = projectsMatch ? projectsMatch[1] : text
 
-    // Split by numbered items (1., 2., 3., etc.)
-    const projectSections = projectsText.split(/\n\d+\.\s+/).filter(section => section.trim())
+    // Split by numbered items (1., 2., 3., etc.) and extract projects
+    const projectSections = projectsText.split(/\n\s*\d+\.\s+/).filter(section => section.trim())
 
     const projects = projectSections.map((section, index) => {
-      // Extract title (first line with emoji and title)
-      const titleMatch = section.match(/🎯\s*\*\*(.+?)\*\*/)
-      const title = titleMatch ? `🎯 ${titleMatch[1]}` : `Project ${index + 1}`
+      console.log(`Parsing project ${index + 1}:`, section.substring(0, 200) + '...')
 
-      // Extract description
-      const descMatch = section.match(/\*\*Description:\*\*\s*(.+?)(?=\*\*Tech Stack:|$)/s)
-      const description = descMatch ? descMatch[1].trim() : ''
+      // Extract title - look for 🎯 **Title**
+      let titleMatch = section.match(/🎯\s*\*\*(.+?)\*\*/)
+      const title = titleMatch ? `🎯 ${titleMatch[1]}` : `🎯 Project ${index + 1}`
 
-      // Extract tech stack
-      const techMatch = section.match(/\*\*Tech Stack:\*\*\s*(.+?)(?=\*\*Implementation:|$)/s)
-      const techStack = techMatch ? techMatch[1].trim() : ''
+      // Extract fields using the new simplified format
+      const extractField = (fieldName) => {
+        const regex = new RegExp(`${fieldName}:\\s*(.+?)(?=\\n[A-Z]+:|$)`, 's')
+        const match = section.match(regex)
+        return match ? match[1].trim() : ''
+      }
 
-      // Extract implementation
-      const implMatch = section.match(/\*\*Implementation:\*\*(.*?)(?=\*\*Difficulty:|$)/s)
-      const implementation = implMatch ? implMatch[1].trim() : ''
+      let description = extractField('DESC')
+      let techStack = extractField('TECH')
+      let implementation = extractField('IMPL')
+      let difficulty = extractField('DIFF') || 'Intermediate'
+      let impact = extractField('IMPACT')
+      let timeEstimate = extractField('TIME') || '24-48 hours'
 
-      // Extract difficulty
-      const difficultyMatch = section.match(/\*\*Difficulty:\*\*\s*(.+?)(?=\*\*Impact:|$)/s)
-      const difficulty = difficultyMatch ? difficultyMatch[1].trim() : 'Intermediate'
+      // Fallback to old format if new format fails
+      if (!description) {
+        const descMatch = section.match(/\*\*Description:\*\*\s*(.+?)(?=\*\*|DESC:|TECH:|$)/s)
+        description = descMatch ? descMatch[1].trim() : ''
+      }
 
-      // Extract impact
-      const impactMatch = section.match(/\*\*Impact:\*\*\s*(.+?)(?=\*\*Time Estimate:|$)/s)
-      const impact = impactMatch ? impactMatch[1].trim() : ''
+      if (!techStack) {
+        const techMatch = section.match(/\*\*Tech Stack:\*\*\s*(.+?)(?=\*\*|DESC:|TECH:|IMPL:|$)/s)
+        techStack = techMatch ? techMatch[1].trim() : ''
+      }
 
-      // Extract time estimate
-      const timeMatch = section.match(/\*\*Time Estimate:\*\*\s*(.+?)(?=\n|$)/s)
-      const timeEstimate = timeMatch ? timeMatch[1].trim() : '24-48 hours'
+      if (!implementation) {
+        const implMatch = section.match(/\*\*Implementation:\*\*(.*?)(?=\*\*|DIFF:|IMPACT:|$)/s)
+        implementation = implMatch ? implMatch[1].trim() : ''
+      }
+
+      if (!impact) {
+        const impactMatch = section.match(/\*\*Impact:\*\*\s*(.+?)(?=\*\*|TIME:|$)/s)
+        impact = impactMatch ? impactMatch[1].trim() : ''
+      }
+
+      if (!difficulty || difficulty === 'Intermediate') {
+        const diffMatch = section.match(/\*\*Difficulty:\*\*\s*(.+?)(?=\*\*|\n|$)/s)
+        if (diffMatch) difficulty = diffMatch[1].trim()
+      }
+
+      if (!timeEstimate || timeEstimate === '24-48 hours') {
+        const timeMatch = section.match(/\*\*Time Estimate:\*\*\s*(.+?)(?=\n|$)/s)
+        if (timeMatch) timeEstimate = timeMatch[1].trim()
+      }
+
+      // Final validation and meaningful fallbacks
+      if (!description || description.length < 10) {
+        description = "An innovative hackathon project that leverages your technical skills to solve real-world problems."
+      }
+      if (!techStack || techStack.length < 5) {
+        techStack = "Modern web technologies, APIs, and cloud services"
+      }
+      if (!implementation || implementation.length < 10) {
+        implementation = "Start with core functionality, build MVP first, then add advanced features. Focus on clean architecture and user experience."
+      }
+      if (!impact || impact.length < 5) {
+        impact = "Addresses real user needs and demonstrates technical proficiency"
+      }
+
+      console.log(`Parsed project ${index + 1}:`, { title, description: description.substring(0, 50) + '...', techStack })
 
       return {
         title,
@@ -81,7 +120,22 @@ export default function RecommendationDisplay({ recommendations, username, profi
     return { profileInfo, projects }
   }
 
-  const { profileInfo, projects } = parseRecommendations(recommendations)
+  // Validate and ensure all projects have required fields
+  const validateProject = (project) => {
+    return {
+      ...project,
+      title: project.title || '🎯 Hackathon Project',
+      description: project.description || 'An innovative hackathon project tailored to your skills.',
+      techStack: project.techStack || 'Modern web technologies and frameworks',
+      implementation: project.implementation || 'Build using best practices with rapid prototyping approach.',
+      difficulty: project.difficulty || 'Intermediate',
+      timeEstimate: project.timeEstimate || '24-48 hours',
+      impact: project.impact || 'Solves real-world problems and demonstrates technical skills'
+    }
+  }
+
+  const { profileInfo, projects: rawProjects } = parseRecommendations(recommendations)
+  const projects = rawProjects.map(validateProject)
 
   const getDifficultyColor = (difficulty) => {
     const level = difficulty.toLowerCase()

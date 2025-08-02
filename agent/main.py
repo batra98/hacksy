@@ -83,8 +83,12 @@ class GitHubAnalyzer:
             async with aiohttp.ClientSession() as session:
                 # Get user basic info
                 async with session.get(f"{self.base_url}/users/{username}", headers=headers) as response:
-                    if response.status != 200:
-                        raise Exception(f"GitHub API error: {response.status}")
+                    if response.status == 404:
+                        raise Exception(f"GitHub user '{username}' not found. Please check the username and try again.")
+                    elif response.status == 403:
+                        raise Exception("GitHub API rate limit exceeded. Please try again in a few minutes.")
+                    elif response.status != 200:
+                        raise Exception(f"GitHub API error: Unable to fetch profile (Status: {response.status})")
                     user_data = await response.json()
                 
                 # Get user repositories
@@ -122,15 +126,9 @@ class GitHubAnalyzer:
                 
         except Exception as e:
             logger.error(f"GitHub API error for {username}: {e}")
-            # Fallback to basic data
-            return {
-                "username": username,
-                "repos": 0,
-                "languages": [],
-                "followers": 0,
-                "following": 0,
-                "error": str(e)
-            }
+            # Re-raise the exception to be handled by the calling function
+            # This ensures proper error messages reach the frontend
+            raise e
 
 class AIAgentClient:
     """Client for communicating with AI models via Gemini API"""
@@ -195,22 +193,37 @@ Primary Languages: {', '.join(languages[:5])}
 Recent Repositories: {', '.join(recent_repos[:5])}
 
 TASK:
-Based on this GitHub profile analysis, generate 5-7 creative and personalized hackathon project recommendations. Each recommendation should:
+Based on this GitHub profile analysis, generate 5 creative and personalized hackathon project recommendations.
 
-1. Be tailored to the developer's skill level and language preferences
-2. Be feasible to complete in 24-48 hours during a hackathon
-3. Include specific technical implementation details
-4. Suggest appropriate tech stacks
-5. Be innovative and solve real problems
+CRITICAL FORMATTING REQUIREMENTS - FOLLOW EXACTLY:
 
-Format your response as a detailed markdown-style recommendation with:
-- Project titles with emojis
-- Clear descriptions
-- Technical stack suggestions
-- Implementation approach
-- Difficulty assessment
+📊 **Profile Analysis Summary**
+[Brief analysis of the user's skills and experience]
 
-Make each recommendation unique and creative, not generic templates.
+🚀 **Top 5 Hackathon Project Recommendations**
+
+1. 🎯 **[Project Title]**
+DESC: [Clear 2-3 sentence description of what the project does]
+TECH: [Comma-separated list of specific technologies]
+IMPL: [Step-by-step implementation approach]
+DIFF: [Beginner/Intermediate/Advanced]
+IMPACT: [Problem it solves and value]
+TIME: [Hours estimate like "24-36 hours"]
+
+2. 🎯 **[Project Title]**
+DESC: [Description]
+TECH: [Technologies]
+IMPL: [Implementation]
+DIFF: [Difficulty]
+IMPACT: [Impact]
+TIME: [Time estimate]
+
+[Continue for projects 3-5 with EXACT same format]
+
+💡 **Hackathon Strategy Tips**
+[Brief tips]
+
+ABSOLUTELY CRITICAL: Use the exact DESC:, TECH:, IMPL:, DIFF:, IMPACT:, TIME: format for EVERY project. No exceptions.
 """
         return prompt
 
@@ -270,41 +283,45 @@ Make each recommendation unique and creative, not generic templates.
             "Python": [
                 {
                     "title": "🤖 AI-Powered Code Assistant",
-                    "description": "Build an intelligent coding companion that helps developers write better code with AI suggestions and automated refactoring",
-                    "tech_stack": "Python + OpenAI API + FastAPI + SQLite + React",
+                    "description": "Build an intelligent coding companion that helps developers write better code with AI suggestions and automated refactoring.",
+                    "tech_stack": "Python, OpenAI API, FastAPI, SQLite, React",
+                    "implementation": "1. Set up FastAPI backend with OpenAI integration\n2. Create code analysis endpoints\n3. Build React frontend with code editor\n4. Implement real-time suggestions\n5. Add SQLite for user preferences",
                     "difficulty": "Intermediate",
                     "time": "36-48 hours",
-                    "impact": "Boost developer productivity by 40%"
+                    "impact": "Boost developer productivity by 40% through intelligent code assistance"
                 },
                 {
                     "title": "📊 Real-time Analytics Dashboard",
-                    "description": "Create a beautiful, interactive dashboard that visualizes live data streams with customizable widgets and alerts",
-                    "tech_stack": "Python + Streamlit + Pandas + WebSocket + PostgreSQL",
+                    "description": "Create a beautiful, interactive dashboard that visualizes live data streams with customizable widgets and alerts.",
+                    "tech_stack": "Python, Streamlit, Pandas, WebSocket, PostgreSQL",
+                    "implementation": "1. Design data ingestion pipeline\n2. Set up PostgreSQL database\n3. Create Streamlit dashboard components\n4. Implement WebSocket for real-time updates\n5. Add customizable widget system",
                     "difficulty": "Beginner-Intermediate",
                     "time": "24-36 hours",
-                    "impact": "Help businesses make data-driven decisions"
+                    "impact": "Help businesses make data-driven decisions with real-time insights"
                 },
                 {
                     "title": "🔍 Smart GitHub Repository Analyzer",
-                    "description": "Analyze any GitHub repo to provide insights on code quality, security vulnerabilities, and improvement suggestions",
-                    "tech_stack": "Python + GitHub API + AST + ML Models + Flask",
+                    "description": "Analyze any GitHub repo to provide insights on code quality, security vulnerabilities, and improvement suggestions.",
+                    "tech_stack": "Python, GitHub API, AST, ML Models, Flask",
+                    "implementation": "1. Integrate GitHub API for repo access\n2. Build AST parser for code analysis\n3. Implement security vulnerability detection\n4. Create ML models for quality scoring\n5. Design Flask web interface",
                     "difficulty": "Intermediate-Advanced",
                     "time": "40-48 hours",
-                    "impact": "Help developers maintain better codebases"
+                    "impact": "Help developers maintain better codebases through automated analysis"
                 }
             ],
             "JavaScript": [
                 {
                     "title": "⚡ Interactive AI Web App",
-                    "description": "Create a dynamic web application with AI integration and beautiful user interface",
-                    "tech_stack": "Next.js + Node.js + AI APIs + MongoDB + Tailwind",
+                    "description": "Create a dynamic web application with AI integration and beautiful user interface for enhanced user experience.",
+                    "tech_stack": "Next.js, Node.js, AI APIs, MongoDB, Tailwind CSS",
+                    "implementation": "1. Set up Next.js project with Tailwind\n2. Create Node.js API endpoints\n3. Integrate AI services (OpenAI/Gemini)\n4. Design responsive UI components\n5. Connect MongoDB for data persistence",
                     "difficulty": "Intermediate",
                     "time": "32-48 hours",
-                    "impact": "Showcase modern web development skills"
+                    "impact": "Showcase modern web development skills with AI integration"
                 },
                 {
                     "title": "🎮 Real-time Collaboration Tool",
-                    "description": "Build a live coding/collaboration platform where teams can work together in real-time",
+                    "description": "Build a live coding/collaboration platform where teams can work together in real-time with shared workspaces.",
                     "tech_stack": "React + Socket.io + Express + Redis + CodeMirror",
                     "difficulty": "Advanced",
                     "time": "40-48 hours",
@@ -365,37 +382,26 @@ Make each recommendation unique and creative, not generic templates.
         import random
         final_projects = random.sample(selected_projects, min(5, len(selected_projects)))
 
-        # Format projects with new structure
+        # Format projects with new simplified structure
         project_text = ""
         for i, project in enumerate(final_projects, 1):
+            implementation = project.get('implementation', 'Start with core functionality, then add advanced features. Focus on MVP first.')
             project_text += f"""
-**{i}. {project['title']}**
+{i}. 🎯 **{project['title']}**
+DESC: {project['description']}
+TECH: {project['tech_stack']}
+IMPL: {implementation}
+DIFF: {project['difficulty']}
+IMPACT: {project['impact']}
+TIME: {project['time']}
 
-**Description:** {project['description']}
-
-**Tech Stack:** {project['tech_stack']}
-
-**Implementation:** Start with core functionality, then add advanced features. Focus on MVP first.
-
-**Difficulty:** {project['difficulty']}
-
-**Time Estimate:** {project['time']}
-
-**Impact:** {project['impact']}
-
----
 """
 
-        return f"""🏆 AI Agents Hackathon Project Recommendations for {username}
+        return f"""📊 **Profile Analysis Summary**
 
-📊 **Profile Analysis:**
-• GitHub: {repos} repositories, {followers} followers
-• Languages: {', '.join(languages[:3]) if languages else 'Multiple technologies'}
-• Experience: {experience} level
-• Recent work: {', '.join(recent_repos[:3]) if recent_repos else 'Various projects'}
-{f'• Bio: {bio[:60]}...' if bio else ''}
+`{username}` demonstrates {experience.lower()} level skills with {repos} repositories and expertise in {', '.join(languages[:3]) if languages else 'multiple technologies'}. {f'Bio: {bio}' if bio else 'Ready for creative hackathon challenges.'}
 
-🚀 **Personalized Project Ideas ({complexity} Difficulty):**
+🚀 **Top 5 Hackathon Project Recommendations**
 
 {project_text}
 
@@ -430,12 +436,25 @@ class AgentService:
     async def analyze_github_profile(self, username: str, agent_name: str = "hackathon_recommender") -> AnalysisResponse:
         """Analyze a GitHub profile and generate hackathon recommendations"""
         try:
+            # Validate username
+            if not username or not username.strip():
+                raise Exception("Username cannot be empty. Please enter a valid GitHub username.")
+
+            username = username.strip()
+
+            # Basic username validation
+            if len(username) > 39:  # GitHub username max length
+                raise Exception("Username is too long. GitHub usernames must be 39 characters or less.")
+
+            if not username.replace('-', '').replace('_', '').isalnum():
+                raise Exception("Invalid username format. GitHub usernames can only contain letters, numbers, hyphens, and underscores.")
+
             agent_config = self.config.agents.get(agent_name, {})
             if not agent_config:
                 raise Exception(f"Agent {agent_name} not found in configuration")
-            
+
             logger.info(f"Starting analysis for {username} with agent {agent_name}")
-            
+
             # Get real GitHub profile data
             profile = await self.github_analyzer.get_user_profile(username)
 

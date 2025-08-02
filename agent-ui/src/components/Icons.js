@@ -25,7 +25,9 @@ import {
   Building,
   GitBranch,
   Activity,
-  TrendingUp
+  TrendingUp,
+  RefreshCw,
+  HelpCircle
 } from 'lucide-react'
 
 export {
@@ -55,5 +57,7 @@ export {
   Building,
   GitBranch,
   Activity,
-  TrendingUp
+  TrendingUp,
+  RefreshCw,
+  HelpCircle
 }
