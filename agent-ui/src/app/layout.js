@@ -1,6 +1,6 @@
 export const metadata = {
-  title: 'AI Agents Hackathon Recommender',
-  description: 'Get personalized hackathon project recommendations based on your GitHub profile',
+  title: 'Hacksy - AI Hackathon Recommender',
+  description: 'AI-powered hackathon project recommendations based on your GitHub profile using Gemini AI',
 }
 
 export default function RootLayout({ children }) {
