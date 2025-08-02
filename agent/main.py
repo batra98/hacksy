@@ -97,24 +97,43 @@ class GitHubAnalyzer:
                         raise Exception(f"GitHub API error: Unable to fetch profile (Status: {response.status})")
                     user_data = await response.json()
                 
-                # Get user repositories
-                async with session.get(f"{self.base_url}/users/{username}/repos?per_page=100", headers=headers, ssl=False) as response:
+                # Get user repositories with detailed info
+                async with session.get(f"{self.base_url}/users/{username}/repos?per_page=100&sort=updated", headers=headers, ssl=False) as response:
                     if response.status == 200:
                         repos_data = await response.json()
                     else:
                         repos_data = []
-                
-                # Analyze repositories for languages
+
+                # Get user's recent activity (events)
+                async with session.get(f"{self.base_url}/users/{username}/events/public?per_page=30", headers=headers, ssl=False) as response:
+                    if response.status == 200:
+                        events_data = await response.json()
+                    else:
+                        events_data = []
+
+                # Analyze repositories in detail
+                repo_analysis = await self._analyze_repositories(session, headers, username, repos_data[:20])  # Analyze top 20 repos
+
+                # Analyze activity patterns
+                activity_analysis = self._analyze_activity_patterns(events_data, repos_data)
+
+                # Calculate comprehensive language statistics
                 languages = {}
-                for repo in repos_data[:20]:  # Analyze top 20 repos
+                language_bytes = {}
+                for repo in repos_data:
                     if repo.get('language'):
-                        lang = repo['language']
-                        languages[lang] = languages.get(lang, 0) + 1
-                
-                # Get top languages
-                top_languages = sorted(languages.items(), key=lambda x: x[1], reverse=True)[:5]
-                top_languages = [lang[0] for lang in top_languages]
-                
+                        languages[repo['language']] = languages.get(repo['language'], 0) + 1
+                        # Weight by stars and size for better language ranking
+                        weight = (repo.get('stargazers_count', 0) + 1) * (repo.get('size', 1) + 1)
+                        language_bytes[repo['language']] = language_bytes.get(repo['language'], 0) + weight
+
+                # Get top languages by usage and expertise
+                top_languages_by_count = sorted(languages.items(), key=lambda x: x[1], reverse=True)[:8]
+                top_languages_by_bytes = sorted(language_bytes.items(), key=lambda x: x[1], reverse=True)[:8]
+
+                # Combine and deduplicate languages
+                all_languages = list(dict.fromkeys([lang[0] for lang in top_languages_by_bytes + top_languages_by_count]))[:10]
+
                 return {
                     "username": username,
                     "name": user_data.get('name', username),
@@ -122,12 +141,22 @@ class GitHubAnalyzer:
                     "repos": user_data.get('public_repos', 0),
                     "followers": user_data.get('followers', 0),
                     "following": user_data.get('following', 0),
-                    "languages": top_languages,
+                    "languages": all_languages,
                     "company": user_data.get('company', ''),
                     "location": user_data.get('location', ''),
                     "created_at": user_data.get('created_at', ''),
                     "repository_count": len(repos_data),
-                    "recent_repos": [repo['name'] for repo in repos_data[:5]]
+                    "recent_repos": [repo['name'] for repo in repos_data[:5]],
+
+                    # Enhanced data for better recommendations
+                    "repo_analysis": repo_analysis,
+                    "activity_analysis": activity_analysis,
+                    "expertise_level": self._calculate_expertise_level(user_data, repos_data, activity_analysis),
+                    "preferred_domains": self._extract_project_domains(repos_data),
+                    "collaboration_style": self._analyze_collaboration_style(repos_data, events_data),
+                    "recent_activity_score": activity_analysis.get('recent_activity_score', 0),
+                    "technology_diversity": len(all_languages),
+                    "project_complexity_preference": repo_analysis.get('avg_complexity', 'intermediate')
                 }
                 
         except Exception as e:
@@ -135,6 +164,236 @@ class GitHubAnalyzer:
             # Re-raise the exception to be handled by the calling function
             # This ensures proper error messages reach the frontend
             raise e
+
+    async def _analyze_repositories(self, session, headers, username, repos_data):
+        """Analyze repositories for deeper insights"""
+        analysis = {
+            "total_stars": 0,
+            "total_forks": 0,
+            "avg_complexity": "intermediate",
+            "popular_topics": [],
+            "frameworks_used": [],
+            "project_types": [],
+            "recent_activity": False
+        }
+
+        all_topics = []
+        frameworks = []
+        project_types = []
+
+        for repo in repos_data:
+            # Aggregate stats
+            analysis["total_stars"] += repo.get('stargazers_count', 0)
+            analysis["total_forks"] += repo.get('forks_count', 0)
+
+            # Collect topics
+            if repo.get('topics'):
+                all_topics.extend(repo['topics'])
+
+            # Analyze repo characteristics
+            repo_name = repo.get('name', '').lower()
+            repo_desc = (repo.get('description') or '').lower()
+
+            # Detect frameworks and project types
+            if any(fw in repo_name or fw in repo_desc for fw in ['react', 'vue', 'angular']):
+                frameworks.append('Frontend Framework')
+            if any(fw in repo_name or fw in repo_desc for fw in ['django', 'flask', 'fastapi', 'express']):
+                frameworks.append('Backend Framework')
+            if any(fw in repo_name or fw in repo_desc for fw in ['ml', 'ai', 'neural', 'tensorflow', 'pytorch']):
+                project_types.append('AI/ML')
+            if any(fw in repo_name or fw in repo_desc for fw in ['api', 'rest', 'graphql']):
+                project_types.append('API Development')
+            if any(fw in repo_name or fw in repo_desc for fw in ['mobile', 'android', 'ios', 'flutter']):
+                project_types.append('Mobile Development')
+
+            # Check recent activity (updated in last 6 months)
+            from datetime import datetime, timedelta
+            if repo.get('updated_at'):
+                try:
+                    updated = datetime.fromisoformat(repo['updated_at'].replace('Z', '+00:00'))
+                    if updated > datetime.now().replace(tzinfo=updated.tzinfo) - timedelta(days=180):
+                        analysis["recent_activity"] = True
+                except:
+                    pass
+
+        # Determine complexity based on stars, forks, and repo count
+        avg_stars = analysis["total_stars"] / max(len(repos_data), 1)
+        if avg_stars > 50 or analysis["total_forks"] > 20:
+            analysis["avg_complexity"] = "advanced"
+        elif avg_stars < 5 and analysis["total_forks"] < 3:
+            analysis["avg_complexity"] = "beginner"
+
+        # Get most popular topics
+        from collections import Counter
+        topic_counts = Counter(all_topics)
+        analysis["popular_topics"] = [topic for topic, count in topic_counts.most_common(5)]
+
+        # Get unique frameworks and project types
+        analysis["frameworks_used"] = list(set(frameworks))
+        analysis["project_types"] = list(set(project_types))
+
+        return analysis
+
+    def _analyze_activity_patterns(self, events_data, repos_data):
+        """Analyze user's activity patterns"""
+        analysis = {
+            "recent_activity_score": 0,
+            "activity_type": "moderate",
+            "preferred_days": [],
+            "commit_frequency": "weekly",
+            "collaboration_level": "individual"
+        }
+
+        if not events_data:
+            return analysis
+
+        # Count recent events (last 30 days)
+        from datetime import datetime, timedelta
+        recent_events = 0
+        push_events = 0
+        pr_events = 0
+
+        for event in events_data:
+            try:
+                event_date = datetime.fromisoformat(event['created_at'].replace('Z', '+00:00'))
+                if event_date > datetime.now().replace(tzinfo=event_date.tzinfo) - timedelta(days=30):
+                    recent_events += 1
+
+                    if event['type'] == 'PushEvent':
+                        push_events += 1
+                    elif event['type'] in ['PullRequestEvent', 'IssuesEvent']:
+                        pr_events += 1
+            except:
+                continue
+
+        # Calculate activity score (0-100)
+        analysis["recent_activity_score"] = min(recent_events * 3, 100)
+
+        # Determine activity type
+        if recent_events > 20:
+            analysis["activity_type"] = "very_active"
+        elif recent_events > 10:
+            analysis["activity_type"] = "active"
+        elif recent_events > 3:
+            analysis["activity_type"] = "moderate"
+        else:
+            analysis["activity_type"] = "low"
+
+        # Determine collaboration level
+        if pr_events > push_events * 0.3:
+            analysis["collaboration_level"] = "collaborative"
+        elif pr_events > 0:
+            analysis["collaboration_level"] = "mixed"
+
+        return analysis
+
+    def _calculate_expertise_level(self, user_data, repos_data, activity_analysis):
+        """Calculate overall expertise level"""
+        factors = {
+            "account_age": 0,
+            "repo_count": 0,
+            "followers": 0,
+            "activity": 0,
+            "complexity": 0
+        }
+
+        # Account age (years on GitHub)
+        try:
+            from datetime import datetime
+            created = datetime.fromisoformat(user_data['created_at'].replace('Z', '+00:00'))
+            years = (datetime.now().replace(tzinfo=created.tzinfo) - created).days / 365
+            factors["account_age"] = min(int(years * 10), 30)  # Max 30 points
+        except:
+            factors["account_age"] = 10
+
+        # Repository count
+        repo_count = user_data.get('public_repos', 0)
+        factors["repo_count"] = min(repo_count * 2, 25)  # Max 25 points
+
+        # Followers (social proof)
+        followers = user_data.get('followers', 0)
+        factors["followers"] = min(followers * 0.5, 20)  # Max 20 points
+
+        # Recent activity
+        factors["activity"] = activity_analysis.get('recent_activity_score', 0) * 0.15  # Max 15 points
+
+        # Repository complexity (stars, forks)
+        total_stars = sum(repo.get('stargazers_count', 0) for repo in repos_data[:10])
+        factors["complexity"] = min(int(total_stars * 0.2), 10)  # Max 10 points
+
+        total_score = sum(factors.values())
+
+        if total_score > 70:
+            return "expert"
+        elif total_score > 40:
+            return "intermediate"
+        elif total_score > 15:
+            return "beginner"
+        else:
+            return "newcomer"
+
+    def _extract_project_domains(self, repos_data):
+        """Extract preferred project domains from repositories"""
+        domains = []
+
+        for repo in repos_data[:15]:  # Check top 15 repos
+            name = (repo.get('name') or '').lower()
+            desc = (repo.get('description') or '').lower()
+            topics = repo.get('topics', [])
+
+            # Web development
+            if any(term in name or term in desc for term in ['web', 'website', 'frontend', 'backend', 'fullstack']):
+                domains.append('Web Development')
+
+            # Data science / AI
+            if any(term in name or term in desc for term in ['data', 'ml', 'ai', 'machine', 'neural', 'analysis']):
+                domains.append('Data Science & AI')
+
+            # Mobile development
+            if any(term in name or term in desc for term in ['mobile', 'android', 'ios', 'app', 'flutter', 'react-native']):
+                domains.append('Mobile Development')
+
+            # DevOps / Infrastructure
+            if any(term in name or term in desc for term in ['docker', 'kubernetes', 'ci', 'cd', 'deploy', 'infrastructure']):
+                domains.append('DevOps & Infrastructure')
+
+            # Gaming
+            if any(term in name or term in desc for term in ['game', 'unity', 'pygame', 'gaming']):
+                domains.append('Game Development')
+
+            # Blockchain
+            if any(term in name or term in desc for term in ['blockchain', 'crypto', 'web3', 'smart', 'contract']):
+                domains.append('Blockchain & Web3')
+
+            # Check topics for additional domains
+            for topic in topics:
+                topic_lower = topic.lower()
+                if topic_lower in ['machine-learning', 'artificial-intelligence', 'deep-learning']:
+                    domains.append('Data Science & AI')
+                elif topic_lower in ['web-development', 'frontend', 'backend']:
+                    domains.append('Web Development')
+                elif topic_lower in ['mobile', 'android', 'ios']:
+                    domains.append('Mobile Development')
+
+        # Return unique domains, most common first
+        from collections import Counter
+        domain_counts = Counter(domains)
+        return [domain for domain, count in domain_counts.most_common(5)]
+
+    def _analyze_collaboration_style(self, repos_data, events_data):
+        """Analyze collaboration preferences"""
+        forked_repos = sum(1 for repo in repos_data if repo.get('fork', False))
+        original_repos = len(repos_data) - forked_repos
+
+        # Count collaboration events
+        collab_events = sum(1 for event in events_data if event.get('type') in ['PullRequestEvent', 'IssuesEvent', 'ForkEvent'])
+
+        if forked_repos > original_repos * 0.5 or collab_events > 5:
+            return "collaborative"
+        elif forked_repos > 0 or collab_events > 0:
+            return "mixed"
+        else:
+            return "independent"
 
 class AIAgentClient:
     """Client for communicating with AI models via Gemini API"""
@@ -164,23 +423,31 @@ class AIAgentClient:
             # Create the prompt for the AI agent
             prompt = self._create_agent_prompt(instructions, profile_data)
 
-            # Try Gemini API first, fallback if not available
+            # Try Gemini API
             if self.model:
                 try:
                     return await self._call_gemini(prompt, temperature, max_tokens)
                 except Exception as gemini_error:
-                    logger.warning(f"Gemini call failed: {gemini_error}, using fallback")
+                    logger.error(f"Gemini call failed: {gemini_error}")
+                    # Re-raise with user-friendly message
+                    if "API key" in str(gemini_error).lower() or "authentication" in str(gemini_error).lower():
+                        raise Exception("AI service authentication failed. Please check the API key configuration.")
+                    elif "rate limit" in str(gemini_error).lower() or "quota" in str(gemini_error).lower():
+                        raise Exception("AI service rate limit exceeded. Please try again in a few minutes.")
+                    elif "network" in str(gemini_error).lower() or "connection" in str(gemini_error).lower():
+                        raise Exception("Unable to connect to AI service. Please check your internet connection and try again.")
+                    else:
+                        raise Exception(f"AI service temporarily unavailable. Please try again later.")
             else:
-                logger.info("Gemini API not configured, using fallback")
-
-            return self._generate_fallback_response(profile_data)
+                raise Exception("AI service is not configured. Please check your Gemini API key configuration.")
 
         except Exception as e:
             logger.error(f"AI agent call failed: {e}")
-            return self._generate_fallback_response(profile_data)
+            # Re-raise the exception to be handled by the calling function
+            raise e
 
     def _create_agent_prompt(self, instructions: str, profile_data: Dict[str, Any]) -> str:
-        """Create a detailed prompt for the AI agent"""
+        """Create a detailed prompt for the AI agent with comprehensive profile analysis"""
         username = profile_data.get('username', 'Unknown')
         languages = profile_data.get('languages', [])
         repos = profile_data.get('repos', 0)
@@ -189,20 +456,61 @@ class AIAgentClient:
         company = profile_data.get('company', '')
         recent_repos = profile_data.get('recent_repos', [])
 
+        # Enhanced data
+        repo_analysis = profile_data.get('repo_analysis', {})
+        activity_analysis = profile_data.get('activity_analysis', {})
+        expertise_level = profile_data.get('expertise_level', 'intermediate')
+        preferred_domains = profile_data.get('preferred_domains', [])
+        collaboration_style = profile_data.get('collaboration_style', 'mixed')
+        recent_activity_score = profile_data.get('recent_activity_score', 0)
+        project_complexity_preference = profile_data.get('project_complexity_preference', 'intermediate')
+
         prompt = f"""
 {instructions}
 
-GITHUB PROFILE DATA:
+COMPREHENSIVE GITHUB PROFILE ANALYSIS:
+
+👤 BASIC INFO:
 Username: {username}
 Bio: {bio}
 Company: {company}
 Public Repositories: {repos}
 Followers: {followers}
-Primary Languages: {', '.join(languages[:5])}
+
+💻 TECHNICAL PROFILE:
+Primary Languages: {', '.join(languages[:8])}
+Expertise Level: {expertise_level}
+Technology Diversity: {len(languages)} different languages
 Recent Repositories: {', '.join(recent_repos[:5])}
 
+🏆 REPOSITORY ANALYSIS:
+Total Stars Earned: {repo_analysis.get('total_stars', 0)}
+Total Forks: {repo_analysis.get('total_forks', 0)}
+Project Complexity Preference: {project_complexity_preference}
+Popular Topics: {', '.join(repo_analysis.get('popular_topics', [])[:5])}
+Frameworks Used: {', '.join(repo_analysis.get('frameworks_used', []))}
+Project Types: {', '.join(repo_analysis.get('project_types', []))}
+
+📊 ACTIVITY PATTERNS:
+Recent Activity Score: {recent_activity_score}/100
+Activity Type: {activity_analysis.get('activity_type', 'moderate')}
+Collaboration Style: {collaboration_style}
+Recent Activity: {'Yes' if repo_analysis.get('recent_activity', False) else 'No'}
+
+🎯 PREFERRED DOMAINS:
+{', '.join(preferred_domains) if preferred_domains else 'General Development'}
+
 TASK:
-Based on this GitHub profile analysis, generate 5 creative and personalized hackathon project recommendations.
+Based on this comprehensive GitHub profile analysis, generate 5 highly personalized and creative hackathon project recommendations that:
+
+1. Match the user's expertise level ({expertise_level})
+2. Leverage their strongest languages: {', '.join(languages[:3])}
+3. Align with their preferred domains: {', '.join(preferred_domains[:3]) if preferred_domains else 'versatile projects'}
+4. Consider their collaboration style: {collaboration_style}
+5. Match their project complexity preference: {project_complexity_preference}
+6. Build upon their existing experience with: {', '.join(repo_analysis.get('frameworks_used', [])[:3])}
+
+Make each recommendation unique and exciting, considering their {recent_activity_score}/100 activity score and {repo_analysis.get('total_stars', 0)} total stars earned.
 
 CRITICAL FORMATTING REQUIREMENTS - FOLLOW EXACTLY:
 
@@ -262,178 +570,7 @@ ABSOLUTELY CRITICAL: Use the exact DESC:, TECH:, IMPL:, DIFF:, IMPACT:, TIME: fo
             logger.error(f"Gemini API call failed: {e}")
             raise e
 
-    def _generate_fallback_response(self, profile_data: Dict[str, Any]) -> str:
-        """Generate a smart fallback response when AI calls fail"""
-        username = profile_data.get('username', 'Developer')
-        languages = profile_data.get('languages', ['Python'])
-        repos = profile_data.get('repos', 0)
-        followers = profile_data.get('followers', 0)
-        bio = profile_data.get('bio', '')
-        recent_repos = profile_data.get('recent_repos', [])
 
-        primary_lang = languages[0] if languages else 'Python'
-
-        # Determine experience level
-        if repos > 50:
-            experience = "Expert"
-            complexity = "Advanced"
-        elif repos > 20:
-            experience = "Advanced"
-            complexity = "Intermediate-Advanced"
-        elif repos > 5:
-            experience = "Intermediate"
-            complexity = "Beginner-Intermediate"
-        else:
-            experience = "Beginner"
-            complexity = "Beginner"
-
-        # Generate varied project suggestions based on profile
-        project_templates = {
-            "Python": [
-                {
-                    "title": "🤖 AI-Powered Code Assistant",
-                    "description": "Build an intelligent coding companion that helps developers write better code with AI suggestions and automated refactoring.",
-                    "tech_stack": "Python, OpenAI API, FastAPI, SQLite, React",
-                    "implementation": "1. Set up FastAPI backend with OpenAI integration\n2. Create code analysis endpoints\n3. Build React frontend with code editor\n4. Implement real-time suggestions\n5. Add SQLite for user preferences",
-                    "difficulty": "Intermediate",
-                    "time": "36-48 hours",
-                    "impact": "Boost developer productivity by 40% through intelligent code assistance"
-                },
-                {
-                    "title": "📊 Real-time Analytics Dashboard",
-                    "description": "Create a beautiful, interactive dashboard that visualizes live data streams with customizable widgets and alerts.",
-                    "tech_stack": "Python, Streamlit, Pandas, WebSocket, PostgreSQL",
-                    "implementation": "1. Design data ingestion pipeline\n2. Set up PostgreSQL database\n3. Create Streamlit dashboard components\n4. Implement WebSocket for real-time updates\n5. Add customizable widget system",
-                    "difficulty": "Beginner-Intermediate",
-                    "time": "24-36 hours",
-                    "impact": "Help businesses make data-driven decisions with real-time insights"
-                },
-                {
-                    "title": "🔍 Smart GitHub Repository Analyzer",
-                    "description": "Analyze any GitHub repo to provide insights on code quality, security vulnerabilities, and improvement suggestions.",
-                    "tech_stack": "Python, GitHub API, AST, ML Models, Flask",
-                    "implementation": "1. Integrate GitHub API for repo access\n2. Build AST parser for code analysis\n3. Implement security vulnerability detection\n4. Create ML models for quality scoring\n5. Design Flask web interface",
-                    "difficulty": "Intermediate-Advanced",
-                    "time": "40-48 hours",
-                    "impact": "Help developers maintain better codebases through automated analysis"
-                }
-            ],
-            "JavaScript": [
-                {
-                    "title": "⚡ Interactive AI Web App",
-                    "description": "Create a dynamic web application with AI integration and beautiful user interface for enhanced user experience.",
-                    "tech_stack": "Next.js, Node.js, AI APIs, MongoDB, Tailwind CSS",
-                    "implementation": "1. Set up Next.js project with Tailwind\n2. Create Node.js API endpoints\n3. Integrate AI services (OpenAI/Gemini)\n4. Design responsive UI components\n5. Connect MongoDB for data persistence",
-                    "difficulty": "Intermediate",
-                    "time": "32-48 hours",
-                    "impact": "Showcase modern web development skills with AI integration"
-                },
-                {
-                    "title": "🎮 Real-time Collaboration Tool",
-                    "description": "Build a live coding/collaboration platform where teams can work together in real-time with shared workspaces.",
-                    "tech_stack": "React + Socket.io + Express + Redis + CodeMirror",
-                    "difficulty": "Advanced",
-                    "time": "40-48 hours",
-                    "impact": "Enable remote team collaboration"
-                }
-            ],
-            "Go": [
-                {
-                    "title": "🚀 High-Performance API Gateway",
-                    "description": "Build a lightning-fast API gateway with rate limiting, authentication, and monitoring",
-                    "tech_stack": "Go + Gin + Redis + PostgreSQL + Docker",
-                    "difficulty": "Intermediate-Advanced",
-                    "time": "36-48 hours",
-                    "impact": "Handle millions of API requests efficiently"
-                }
-            ]
-        }
-
-        # Select projects based on user's languages
-        selected_projects = []
-        for lang in languages[:3]:  # Check top 3 languages
-            if lang in project_templates:
-                selected_projects.extend(project_templates[lang])
-
-        # Add experience-based projects
-        if repos > 20:
-            selected_projects.append({
-                "title": "🔍 Advanced Code Intelligence Platform",
-                "description": f"With your {repos} repositories, build a sophisticated codebase analyzer that provides deep insights",
-                "tech_stack": f"{primary_lang} + ML + Graph Databases + Web UI",
-                "difficulty": "Advanced",
-                "time": "48+ hours",
-                "impact": "Transform how developers understand codebases"
-            })
-
-        # Default projects if no matches
-        if not selected_projects:
-            selected_projects = [
-                {
-                    "title": "🤖 Universal AI Assistant",
-                    "description": "Start your AI journey with a versatile assistant that can help with various tasks",
-                    "tech_stack": "Python + OpenAI API + Streamlit + SQLite",
-                    "difficulty": "Beginner-Intermediate",
-                    "time": "24-36 hours",
-                    "impact": "Learn AI integration fundamentals"
-                },
-                {
-                    "title": "📚 Smart Learning Companion",
-                    "description": "Build an AI that helps developers learn new technologies through personalized recommendations",
-                    "tech_stack": "Next.js + Python + Vector DB + AI APIs",
-                    "difficulty": "Intermediate",
-                    "time": "32-48 hours",
-                    "impact": "Accelerate developer learning"
-                }
-            ]
-
-        # Select 5 projects for variety
-        import random
-        final_projects = random.sample(selected_projects, min(5, len(selected_projects)))
-
-        # Format projects with new simplified structure
-        project_text = ""
-        for i, project in enumerate(final_projects, 1):
-            implementation = project.get('implementation', 'Start with core functionality, then add advanced features. Focus on MVP first.')
-            project_text += f"""
-{i}. 🎯 **{project['title']}**
-DESC: {project['description']}
-TECH: {project['tech_stack']}
-IMPL: {implementation}
-DIFF: {project['difficulty']}
-IMPACT: {project['impact']}
-TIME: {project['time']}
-
-"""
-
-        return f"""📊 **Profile Analysis Summary**
-
-`{username}` demonstrates {experience.lower()} level skills with {repos} repositories and expertise in {', '.join(languages[:3]) if languages else 'multiple technologies'}. {f'Bio: {bio}' if bio else 'Ready for creative hackathon challenges.'}
-
-🚀 **Top 5 Hackathon Project Recommendations**
-
-{project_text}
-
-💡 **Hackathon Strategy for {username}:**
-• Leverage your {primary_lang} expertise as your foundation
-• Build on patterns from your {repos} existing repositories
-• Consider your {followers} followers as potential early users
-• Focus on {complexity.lower()} complexity for 24-48 hour timeline
-
-🛠️ **Recommended Tech Stack:**
-• **Primary**: {primary_lang} (your strongest language)
-• **AI/ML**: OpenAI API, Anthropic Claude, or Hugging Face
-• **Backend**: {'FastAPI' if 'Python' in languages else 'Express.js' if 'JavaScript' in languages or 'TypeScript' in languages else 'Go Gin' if 'Go' in languages else 'Your preferred framework'}
-• **Database**: PostgreSQL, MongoDB, or Vector databases
-• **Deployment**: Docker, Vercel, or cloud platforms
-
-🎯 **Success Tips:**
-- Start with your strongest language ({primary_lang})
-- Build something you'd actually use
-- Focus on one core feature done really well
-- Plan for demo-friendly functionality
-
-Ready to build something amazing? Your {experience.lower()} level skills are perfect for these projects! 🚀"""
 
 class AgentService:
     def __init__(self):

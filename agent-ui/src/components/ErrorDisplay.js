@@ -1,14 +1,15 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { 
-  AlertCircle, 
-  Github, 
-  Search, 
-  RefreshCw, 
+import {
+  AlertCircle,
+  Github,
+  Search,
+  RefreshCw,
   ExternalLink,
   HelpCircle,
-  Zap
+  Zap,
+  Target
 } from './Icons'
 
 export default function ErrorDisplay({ error, username, onRetry, onClear }) {
@@ -44,6 +45,38 @@ export default function ErrorDisplay({ error, username, onRetry, onClear }) {
           'Wait 5-10 minutes before trying again',
           'GitHub allows 60 requests per hour for unauthenticated users',
           'Try again later for best results'
+        ]
+      }
+    }
+
+    if (message.includes('ai service') || message.includes('authentication failed') || message.includes('api key')) {
+      return {
+        type: 'ai_service',
+        title: '🤖 AI Service Issue',
+        subtitle: 'AI recommendation service is temporarily unavailable',
+        description: 'The AI service that generates personalized recommendations is currently experiencing issues.',
+        icon: Zap,
+        color: 'purple',
+        suggestions: [
+          'The service may be temporarily down for maintenance',
+          'Try again in a few minutes',
+          'Check if the service status page shows any issues'
+        ]
+      }
+    }
+
+    if (message.includes('quota') || message.includes('ai service rate limit')) {
+      return {
+        type: 'ai_quota',
+        title: '🎯 AI Service Quota Exceeded',
+        subtitle: 'Daily AI recommendation limit reached',
+        description: 'The AI service has reached its daily usage limit.',
+        icon: Target,
+        color: 'orange',
+        suggestions: [
+          'Try again tomorrow when the quota resets',
+          'The service gets refreshed daily at midnight UTC',
+          'Consider upgrading for higher limits'
         ]
       }
     }
@@ -110,6 +143,15 @@ export default function ErrorDisplay({ error, username, onRetry, onClear }) {
       subtitle: 'text-red-700',
       button: 'bg-red-600 hover:bg-red-700',
       accent: 'bg-red-100 text-red-800'
+    },
+    purple: {
+      bg: 'from-purple-50 to-indigo-50',
+      border: 'border-purple-200',
+      icon: 'text-purple-600',
+      title: 'text-purple-800',
+      subtitle: 'text-purple-700',
+      button: 'bg-purple-600 hover:bg-purple-700',
+      accent: 'bg-purple-100 text-purple-800'
     }
   }
 
@@ -212,6 +254,8 @@ export default function ErrorDisplay({ error, username, onRetry, onClear }) {
                 {errorInfo.type === 'not_found' && "Popular GitHub usernames to try: octocat, torvalds, gaearon, or your own!"}
                 {errorInfo.type === 'rate_limit' && "GitHub's rate limiting helps keep their service fast and reliable for everyone."}
                 {errorInfo.type === 'network' && "GitHub serves over 100 million developers worldwide - that's a lot of traffic!"}
+                {errorInfo.type === 'ai_service' && "AI services are constantly improving - they'll be back online soon!"}
+                {errorInfo.type === 'ai_quota' && "High-quality AI recommendations require computational resources - limits help ensure fair access."}
                 {errorInfo.type === 'generic' && "Every great developer has encountered errors - it's all part of the journey!"}
               </div>
             </div>
