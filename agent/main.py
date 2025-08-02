@@ -72,6 +72,12 @@ class GitHubAnalyzer:
     def __init__(self, token: Optional[str] = None):
         self.token = token or os.getenv('GITHUB_PERSONAL_ACCESS_TOKEN')
         self.base_url = "https://api.github.com"
+
+        # Log token status for debugging (without exposing the actual token)
+        if self.token:
+            logger.info(f"GitHub token configured: {self.token[:12]}...")
+        else:
+            logger.warning("No GitHub token found - API rate limits will be lower")
         
     async def get_user_profile(self, username: str) -> Dict[str, Any]:
         """Fetch real GitHub user profile data"""
