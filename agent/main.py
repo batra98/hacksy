@@ -266,48 +266,125 @@ Make each recommendation unique and creative, not generic templates.
             complexity = "Beginner"
 
         # Generate varied project suggestions based on profile
-        projects = []
+        project_templates = {
+            "Python": [
+                {
+                    "title": "🤖 AI-Powered Code Assistant",
+                    "description": "Build an intelligent coding companion that helps developers write better code with AI suggestions and automated refactoring",
+                    "tech_stack": "Python + OpenAI API + FastAPI + SQLite + React",
+                    "difficulty": "Intermediate",
+                    "time": "36-48 hours",
+                    "impact": "Boost developer productivity by 40%"
+                },
+                {
+                    "title": "📊 Real-time Analytics Dashboard",
+                    "description": "Create a beautiful, interactive dashboard that visualizes live data streams with customizable widgets and alerts",
+                    "tech_stack": "Python + Streamlit + Pandas + WebSocket + PostgreSQL",
+                    "difficulty": "Beginner-Intermediate",
+                    "time": "24-36 hours",
+                    "impact": "Help businesses make data-driven decisions"
+                },
+                {
+                    "title": "🔍 Smart GitHub Repository Analyzer",
+                    "description": "Analyze any GitHub repo to provide insights on code quality, security vulnerabilities, and improvement suggestions",
+                    "tech_stack": "Python + GitHub API + AST + ML Models + Flask",
+                    "difficulty": "Intermediate-Advanced",
+                    "time": "40-48 hours",
+                    "impact": "Help developers maintain better codebases"
+                }
+            ],
+            "JavaScript": [
+                {
+                    "title": "⚡ Interactive AI Web App",
+                    "description": "Create a dynamic web application with AI integration and beautiful user interface",
+                    "tech_stack": "Next.js + Node.js + AI APIs + MongoDB + Tailwind",
+                    "difficulty": "Intermediate",
+                    "time": "32-48 hours",
+                    "impact": "Showcase modern web development skills"
+                },
+                {
+                    "title": "🎮 Real-time Collaboration Tool",
+                    "description": "Build a live coding/collaboration platform where teams can work together in real-time",
+                    "tech_stack": "React + Socket.io + Express + Redis + CodeMirror",
+                    "difficulty": "Advanced",
+                    "time": "40-48 hours",
+                    "impact": "Enable remote team collaboration"
+                }
+            ],
+            "Go": [
+                {
+                    "title": "🚀 High-Performance API Gateway",
+                    "description": "Build a lightning-fast API gateway with rate limiting, authentication, and monitoring",
+                    "tech_stack": "Go + Gin + Redis + PostgreSQL + Docker",
+                    "difficulty": "Intermediate-Advanced",
+                    "time": "36-48 hours",
+                    "impact": "Handle millions of API requests efficiently"
+                }
+            ]
+        }
 
-        # Language-specific projects
-        if "Python" in languages:
-            projects.extend([
-                "🐍 **AI-Powered Development Assistant**\n   Create an intelligent coding companion with {primary_lang} expertise\n   Stack: Python + OpenAI API + FastAPI + Vector DB",
-                "📊 **Smart Analytics Dashboard**\n   Build a real-time data visualization platform\n   Stack: Python + Streamlit + Pandas + PostgreSQL",
-                "🤖 **Automated Code Reviewer**\n   Develop an AI system that reviews and suggests code improvements\n   Stack: Python + AST + ML Models + GitHub API"
-            ])
+        # Select projects based on user's languages
+        selected_projects = []
+        for lang in languages[:3]:  # Check top 3 languages
+            if lang in project_templates:
+                selected_projects.extend(project_templates[lang])
 
-        if "JavaScript" in languages or "TypeScript" in languages:
-            projects.extend([
-                "⚡ **Interactive AI Web App**\n   Create a dynamic web application with AI integration\n   Stack: Next.js + Node.js + AI APIs + MongoDB",
-                "🎮 **Real-time Collaboration Tool**\n   Build a live coding/collaboration platform\n   Stack: React + Socket.io + Express + Redis",
-                "📱 **Progressive Web Assistant**\n   Develop a PWA that helps developers with daily tasks\n   Stack: TypeScript + Service Workers + IndexedDB"
-            ])
-
-        if "Go" in languages:
-            projects.extend([
-                "🚀 **High-Performance API Gateway**\n   Build a lightning-fast microservice architecture\n   Stack: Go + Docker + Kubernetes + Redis",
-                "🔧 **Developer CLI Toolkit**\n   Create powerful command-line tools for developers\n   Stack: Go + Cobra + Viper + SQLite"
-            ])
-
-        # Experience-based projects
+        # Add experience-based projects
         if repos > 20:
-            projects.append("🔍 **Advanced Code Intelligence Platform**\n   With your {repos} repositories, build a sophisticated codebase analyzer\n   Stack: {primary_lang} + ML + Graph Databases + Web UI")
+            selected_projects.append({
+                "title": "🔍 Advanced Code Intelligence Platform",
+                "description": f"With your {repos} repositories, build a sophisticated codebase analyzer that provides deep insights",
+                "tech_stack": f"{primary_lang} + ML + Graph Databases + Web UI",
+                "difficulty": "Advanced",
+                "time": "48+ hours",
+                "impact": "Transform how developers understand codebases"
+            })
 
         # Default projects if no matches
-        if not projects:
-            projects = [
-                "🤖 **Universal AI Assistant**\n   Start your AI journey with a versatile assistant\n   Stack: Python + OpenAI API + Streamlit + SQLite",
-                "📚 **Smart Learning Companion**\n   Build an AI that helps developers learn new technologies\n   Stack: Next.js + Python + Vector DB + AI APIs",
-                "🛠️ **Developer Productivity Suite**\n   Create tools that enhance developer workflow\n   Stack: Your preferred language + APIs + Database"
+        if not selected_projects:
+            selected_projects = [
+                {
+                    "title": "🤖 Universal AI Assistant",
+                    "description": "Start your AI journey with a versatile assistant that can help with various tasks",
+                    "tech_stack": "Python + OpenAI API + Streamlit + SQLite",
+                    "difficulty": "Beginner-Intermediate",
+                    "time": "24-36 hours",
+                    "impact": "Learn AI integration fundamentals"
+                },
+                {
+                    "title": "📚 Smart Learning Companion",
+                    "description": "Build an AI that helps developers learn new technologies through personalized recommendations",
+                    "tech_stack": "Next.js + Python + Vector DB + AI APIs",
+                    "difficulty": "Intermediate",
+                    "time": "32-48 hours",
+                    "impact": "Accelerate developer learning"
+                }
             ]
 
-        # Select 3-5 projects randomly for variety
+        # Select 5 projects for variety
         import random
-        selected_projects = random.sample(projects, min(5, len(projects)))
+        final_projects = random.sample(selected_projects, min(5, len(selected_projects)))
 
+        # Format projects with new structure
         project_text = ""
-        for i, project in enumerate(selected_projects, 1):
-            project_text += f"{i}. {project.format(primary_lang=primary_lang, repos=repos)}\n\n"
+        for i, project in enumerate(final_projects, 1):
+            project_text += f"""
+**{i}. {project['title']}**
+
+**Description:** {project['description']}
+
+**Tech Stack:** {project['tech_stack']}
+
+**Implementation:** Start with core functionality, then add advanced features. Focus on MVP first.
+
+**Difficulty:** {project['difficulty']}
+
+**Time Estimate:** {project['time']}
+
+**Impact:** {project['impact']}
+
+---
+"""
 
         return f"""🏆 AI Agents Hackathon Project Recommendations for {username}
 
