@@ -13,6 +13,8 @@ services:
       - MCPGATEWAY_URL=mcp-gateway:8811
       # Gemini API configuration
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      # GitHub API configuration
+      - GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_PERSONAL_ACCESS_TOKEN}
     volumes:
       # mount the agents configuration
       - ./agents.yaml:/agents.yaml
