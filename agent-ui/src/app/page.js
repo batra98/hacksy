@@ -69,14 +69,14 @@ export default function Home() {
           margin: '0 0 8px 0',
           color: '#333'
         }}>
-          AI Agents Hackathon Recommender
+          Hacksy - AI Hackathon Recommender
         </h1>
         <p style={{ 
           color: '#666', 
           margin: 0,
           fontSize: '16px'
         }}>
-          Get personalized hackathon project recommendations!
+          AI-powered hackathon project recommendations based on your GitHub profile
         </p>
       </div>
 
@@ -97,7 +97,7 @@ export default function Home() {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="ajeetraina"
+              placeholder="torvalds"
               style={{
                 flex: 1,
                 padding: '12px 16px',
