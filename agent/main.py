@@ -422,10 +422,11 @@ async def root():
     return {"message": "Hacksy - AI Agents Hackathon Recommender API", "version": "1.0.0"}
 
 if __name__ == "__main__":
+    port = int(os.getenv("PORT", 7777))  # Render uses PORT env var
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=7777,
+        port=port,
         reload=False,
         log_level="info"
     )
