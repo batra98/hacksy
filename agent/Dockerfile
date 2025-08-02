@@ -27,8 +27,9 @@ RUN groupadd -r agents && useradd -r -g agents agents
 RUN chown -R agents:agents /app
 USER agents
 
-# Expose port
+# Expose port (Render uses PORT environment variable)
 EXPOSE 7777
+ENV PORT=7777
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
