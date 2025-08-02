@@ -88,7 +88,7 @@ class GitHubAnalyzer:
         try:
             async with aiohttp.ClientSession() as session:
                 # Get user basic info
-                async with session.get(f"{self.base_url}/users/{username}", headers=headers) as response:
+                async with session.get(f"{self.base_url}/users/{username}", headers=headers, ssl=False) as response:
                     if response.status == 404:
                         raise Exception(f"GitHub user '{username}' not found. Please check the username and try again.")
                     elif response.status == 403:
@@ -98,7 +98,7 @@ class GitHubAnalyzer:
                     user_data = await response.json()
                 
                 # Get user repositories
-                async with session.get(f"{self.base_url}/users/{username}/repos?per_page=100", headers=headers) as response:
+                async with session.get(f"{self.base_url}/users/{username}/repos?per_page=100", headers=headers, ssl=False) as response:
                     if response.status == 200:
                         repos_data = await response.json()
                     else:
@@ -144,7 +144,10 @@ class AIAgentClient:
         # Configure Gemini API
         self.gemini_api_key = os.getenv('GEMINI_API_KEY')
         if self.gemini_api_key:
-            genai.configure(api_key=self.gemini_api_key)
+            genai.configure(
+                api_key=self.gemini_api_key,
+                transport='rest'
+            )
             self.model = genai.GenerativeModel('gemini-1.5-flash')
         else:
             logger.warning("GEMINI_API_KEY not found, will use fallback responses")
