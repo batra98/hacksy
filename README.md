@@ -62,6 +62,8 @@ An intelligent multi-agent system that analyzes real GitHub profiles and generat
 - Docker & Docker Compose
 - GitHub Personal Access Token ([Get one here](https://github.com/settings/tokens))
 - Google Gemini API Key ([Get one here](https://aistudio.google.com/app/apikey))
+- Vapi API Key for web-based voice integration ([Get one here](https://vapi.ai/dashboard))
+- A public URL for the agent service (e.g., using ngrok) for Vapi callbacks during local development.
 
 ### 1. Clone & Setup
 
@@ -80,6 +82,10 @@ echo "github.personal_access_token=YOUR_GITHUB_TOKEN_HERE" > .mcp.env
 
 # Create .env for Gemini AI
 echo "GEMINI_API_KEY=YOUR_GEMINI_API_KEY_HERE" > .env
+
+# Add Vapi and public URL to .env for voice features
+echo "VAPI_API_KEY=YOUR_VAPI_API_KEY_HERE" >> .env
+echo "PUBLIC_AGENTS_URL=http://your-ngrok-url.ngrok.io" >> .env
 ```
 
 

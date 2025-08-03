@@ -15,6 +15,9 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       # GitHub API configuration
       - GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_PERSONAL_ACCESS_TOKEN}
+      # Vapi configuration for voice calls
+      - VAPI_API_KEY=${VAPI_API_KEY}
+      - PUBLIC_AGENTS_URL=${PUBLIC_AGENTS_URL}
     volumes:
       # mount the agents configuration
       - ./agents.yaml:/agents.yaml

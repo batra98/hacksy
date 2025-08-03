@@ -10,14 +10,21 @@ import aiohttp
 import asyncio
 import json
 import random
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 
+import ssl
+import certifi
 import yaml
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import uvicorn
 import google.generativeai as genai
+from vapi import Vapi
+import nest_asyncio
+
+# Apply nest_asyncio to allow Vapi's async within FastAPI/Uvicorn
+nest_asyncio.apply()
 
 # Configure logging
 logging.basicConfig(
@@ -41,6 +48,18 @@ class AnalysisResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     version: str = "1.0.0"
+
+class AssistantConfigurationResponse(BaseModel):
+    success: bool
+    config: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+# A model to represent the tool call from Vapi
+class VapiToolCallRequest(BaseModel):
+    class ToolCall(BaseModel):
+        name: str
+        parameters: Dict[str, Any]
+    tool_call: ToolCall
 
 class AgentConfig:
     def __init__(self, config_path: str = "agents.yaml"):
@@ -72,12 +91,22 @@ class GitHubAnalyzer:
     def __init__(self, token: Optional[str] = None):
         self.token = token or os.getenv('GITHUB_PERSONAL_ACCESS_TOKEN')
         self.base_url = "https://api.github.com"
+        self.ssl_context = self._create_ssl_context()
 
         # Log token status for debugging (without exposing the actual token)
         if self.token:
             logger.info(f"GitHub token configured: {self.token[:12]}...")
         else:
             logger.warning("No GitHub token found - API rate limits will be lower")
+
+    def _create_ssl_context(self) -> ssl.SSLContext:
+        """Creates an SSL context that trusts default CAs and an optional custom CA."""
+        context = ssl.create_default_context(cafile=certifi.where())
+        custom_ca_path = os.getenv("CUSTOM_CA_BUNDLE_PATH")
+        if custom_ca_path and os.path.exists(custom_ca_path):
+            logger.info(f"Loading custom CA from: {custom_ca_path}")
+            context.load_verify_locations(cafile=custom_ca_path)
+        return context
         
     async def get_user_profile(self, username: str) -> Dict[str, Any]:
         """Fetch real GitHub user profile data"""
@@ -88,7 +117,7 @@ class GitHubAnalyzer:
         try:
             async with aiohttp.ClientSession() as session:
                 # Get user basic info
-                async with session.get(f"{self.base_url}/users/{username}", headers=headers, ssl=False) as response:
+                async with session.get(f"{self.base_url}/users/{username}", headers=headers, ssl=self.ssl_context) as response:
                     if response.status == 404:
                         raise Exception(f"GitHub user '{username}' not found. Please check the username and try again.")
                     elif response.status == 403:
@@ -98,14 +127,14 @@ class GitHubAnalyzer:
                     user_data = await response.json()
                 
                 # Get user repositories with detailed info
-                async with session.get(f"{self.base_url}/users/{username}/repos?per_page=100&sort=updated", headers=headers, ssl=False) as response:
+                async with session.get(f"{self.base_url}/users/{username}/repos?per_page=100&sort=updated", headers=headers, ssl=self.ssl_context) as response:
                     if response.status == 200:
                         repos_data = await response.json()
                     else:
                         repos_data = []
 
                 # Get user's recent activity (events)
-                async with session.get(f"{self.base_url}/users/{username}/events/public?per_page=30", headers=headers, ssl=False) as response:
+                async with session.get(f"{self.base_url}/users/{username}/events/public?per_page=30", headers=headers, ssl=self.ssl_context) as response:
                     if response.status == 200:
                         events_data = await response.json()
                     else:
@@ -570,6 +599,72 @@ ABSOLUTELY CRITICAL: Use the exact DESC:, TECH:, IMPL:, DIFF:, IMPACT:, TIME: fo
             logger.error(f"Gemini API call failed: {e}")
             raise e
 
+class VapiClient:
+    """Client for handling voice interactions with Vapi."""
+    def __init__(self):
+        self.api_key = os.getenv('VAPI_API_KEY')
+        self.public_agents_url = os.getenv('PUBLIC_AGENTS_URL')
+        
+        if not all([self.api_key, self.public_agents_url]):
+            logger.warning("Vapi environment variables (VAPI_API_KEY, PUBLIC_AGENTS_URL) are not fully configured. Voice features will be disabled.")
+            self.client = None
+        else:
+            # We don't need to make API calls from the backend for web-based calls,
+            # but we can keep the client initialization for future use.
+            self.client = Vapi(self.api_key)
+            logger.info("Vapi client configured successfully for generating assistant configurations.")
+
+    def get_assistant_config(self) -> Dict[str, Any]:
+        """Constructs the assistant configuration for Vapi calls."""
+        if not self.public_agents_url:
+             raise Exception("Vapi service is not configured due to missing PUBLIC_AGENTS_URL.")
+
+        # The URL Vapi will call when the tool is invoked by the assistant.
+        tool_callback_url = f"{self.public_agents_url}/vapi-tool-call/analyze"
+
+        return {
+            "model": {
+                "provider": "openai", # Vapi often uses OpenAI's function calling standard
+                "model": "gpt-4o",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": """You are Hacksy, a friendly and expert AI assistant that helps developers brainstorm hackathon project ideas over a voice call.
+
+Your process is:
+1. Greet the user and ask for their GitHub username.
+2. Once you have the username, use the `get_hackathon_recommendations` tool to analyze their profile.
+3. When the analysis is complete, you will receive a summary of their skills.
+4. Based on this summary, start a conversation. Suggest one project idea at a time. Be engaging and ask for their feedback on the ideas.
+5. Keep your responses concise and conversational.
+"""
+                    }
+                ],
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "get_hackathon_recommendations",
+                            "description": "Analyzes a GitHub username to get a summary of the user's skills and expertise to brainstorm hackathon ideas.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "username": {
+                                        "type": "string",
+                                        "description": "The GitHub username to analyze, e.g., 'torvalds'."
+                                    }
+                                },
+                                "required": ["username"]
+                            },
+                            "url": tool_callback_url, # The public endpoint Vapi will POST to
+                            "method": "POST"
+                        }
+                    }
+                ]
+            },
+            "voice": "jennifer-playht",
+            "firstMessage": "Hey! I'm Hacksy, your personal hackathon brainstorming partner. To get started, could you please tell me your GitHub username?"
+        }
 
 
 class AgentService:
@@ -578,6 +673,7 @@ class AgentService:
         self.gateway_url = os.getenv('MCPGATEWAY_URL', 'mcp-gateway:8811')
         self.github_analyzer = GitHubAnalyzer()
         self.ai_client = AIAgentClient(self.gateway_url)
+        self.vapi_client = VapiClient()
     
     async def analyze_github_profile(self, username: str, agent_name: str = "hackathon_recommender") -> AnalysisResponse:
         """Analyze a GitHub profile and generate hackathon recommendations"""
@@ -621,6 +717,15 @@ class AgentService:
                 agent=agent_name,
                 error=str(e)
             )
+
+    def get_brainstorming_config(self) -> AssistantConfigurationResponse:
+        """Provides the assistant configuration for a web-based Vapi session."""
+        try:
+            config = self.vapi_client.get_assistant_config()
+            return AssistantConfigurationResponse(success=True, config=config)
+        except Exception as e:
+            logger.error(f"Failed to get brainstorming session config: {e}")
+            return AssistantConfigurationResponse(success=False, error=str(e))
     
 
 
@@ -643,22 +748,66 @@ app.add_middleware(
 # Initialize service
 agent_service = AgentService()
 
-@app.get("/health", response_model=HealthResponse)
+@app.get("/health", response_model=HealthResponse, tags=["General"])
 async def health_check():
     """Health check endpoint"""
     return HealthResponse(status="healthy")
 
-@app.post("/analyze", response_model=AnalysisResponse)
+@app.post("/analyze", response_model=AnalysisResponse, tags=["Core"])
 async def analyze_profile(request: AnalysisRequest):
     """Analyze a GitHub profile and generate hackathon recommendations"""
     return await agent_service.analyze_github_profile(request.username, request.agent)
 
-@app.get("/agents")
+@app.get("/agents", tags=["General"])
 async def list_agents():
     """List available agents"""
     return {"agents": list(agent_service.config.agents.keys())}
 
-@app.get("/")
+@app.get("/brainstorm/config", response_model=AssistantConfigurationResponse, tags=["Voice AI"])
+async def get_brainstorm_config():
+    """
+    Provides the full assistant configuration for the frontend to initialize a web-based Vapi call.
+    """
+    return agent_service.get_brainstorming_config()
+
+@app.post("/vapi-tool-call/analyze", tags=["Voice AI"])
+async def handle_vapi_tool_call(request: VapiToolCallRequest):
+    """
+    Webhook endpoint for Vapi to call when a tool is invoked.
+    This should not be called directly by users.
+    """
+    tool_name = request.tool_call.name
+    parameters = request.tool_call.parameters
+    
+    if tool_name == "get_hackathon_recommendations":
+        username = parameters.get("username")
+        if not username:
+            return {"tool_response": "I'm sorry, I didn't catch the username. Could you please repeat it?"}
+        
+        logger.info(f"Vapi tool call received for username: {username}")
+        
+        # Run the existing analysis logic
+        analysis_result = await agent_service.analyze_github_profile(username)
+        
+        if analysis_result.success and analysis_result.profile:
+            # If successful, create a concise summary for the AI to use in conversation.
+            profile = analysis_result.profile
+            summary = (
+                f"Okay, I've analyzed the GitHub profile for {profile.get('name', username)}. "
+                f"They seem to be an {profile.get('expertise_level', 'intermediate')} developer. "
+                f"Their top languages are {', '.join(profile.get('languages', [])[:3])}. "
+                f"They have experience in domains like {', '.join(profile.get('preferred_domains', ['general development'])[:2])}. "
+                f"Now, let's brainstorm some ideas based on that. How about we start with a project related to {profile.get('preferred_domains', ['web development'])[0]}?"
+            )
+            return {"tool_response": summary}
+        else:
+            # If analysis fails, inform the AI so it can tell the user.
+            error_message = analysis_result.error or "I couldn't analyze that profile for some reason."
+            return {"tool_response": f"I'm sorry, I ran into an issue. {error_message} Could you try a different username?"}
+    
+    return {"tool_response": "Unknown tool called."}
+
+@app.get("/", tags=["General"])
 async def root():
     """Root endpoint"""
     return {"message": "Hacksy - AI Agents Hackathon Recommender API", "version": "1.0.0"}
